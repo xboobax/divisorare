@@ -9,7 +9,8 @@ export type Player = {
   avg: number | null;          // Durchschnittsscore laut Sorare
   proj: number | null;         // Sorare-Projektion für die nächste Spielwoche
   last5Apps: number | null;    // Einsätze in den letzten 5 Spielen
-  status: string;              // Roh-Einsatzstatus von Sorare
+  status: string;              // Roh-Einsatzstatus von Sorare (nur Football)
+  playOdds: number | null;     // Einsatzchance 0..1 aus Sorare-Quoten (nur Football)
   injuries: number;            // Anzahl aktiver Verletzungen
   hasGame: boolean | null;     // null = unbekannt
   nextGame?: string;
@@ -17,17 +18,19 @@ export type Player = {
 
 export type Forecast = Player & { expected: number; playProb: number; weighted: number };
 
-// Grobe Einsatzwahrscheinlichkeit. Die genauen Status-Werte von Sorare sind nicht
-// vollständig bekannt, deshalb wird der Rohstatus in der Tabelle mit angezeigt.
+const STATUS_PROB: Record<string, number> = {
+  STARTER: 0.9, REGULAR: 0.7, SUBSTITUTE: 0.4, SUPER_SUBSTITUTE: 0.3, NOT_PLAYING: 0.05, RETIRED: 0,
+};
+
 export function playProbability(p: Player): number {
   if (p.hasGame === false) return 0;
-  const s = p.status.toUpperCase();
-  let prob = 0.6;
-  if (s.includes("NOT")) prob = 0.1;
-  else if (s.includes("START")) prob = 0.9;
-  else if (s.includes("SUB") || s.includes("MIGHT") || s.includes("DOUBT")) prob = 0.5;
-  else if (s.includes("PLAYING")) prob = 0.85;
-  if (p.last5Apps !== null) prob = 0.5 * prob + 0.5 * (0.1 + 0.85 * (p.last5Apps / 5));
+  let prob: number;
+  if (p.playOdds !== null) {
+    prob = p.playOdds;
+  } else {
+    prob = STATUS_PROB[p.status.toUpperCase()] ?? 0.6;
+    if (p.last5Apps !== null) prob = 0.5 * prob + 0.5 * (0.1 + 0.85 * (p.last5Apps / 5));
+  }
   if (p.injuries > 0) prob = Math.min(prob, 0.15);
   return Math.max(0, Math.min(1, prob));
 }
