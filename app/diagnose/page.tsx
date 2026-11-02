@@ -25,7 +25,7 @@ function block(schema: string, name: string): string[] | null {
   return out;
 }
 
-// Entfernt die Argument-Listen, damit nur "feld: Typ" übrig bleibt
+// Ganze Typen: Argumente zusammengezogen
 function compact(lines: string[]): string[] {
   const out: string[] = [];
   for (let i = 0; i < lines.length; i++) {
@@ -42,22 +42,37 @@ function compact(lines: string[]): string[] {
   return out;
 }
 
-const WANTED = ["Query", "Player", "So5Score", "NBAPlayer", "AnyPlayerInterface", "So5Fixture", "PlayerGameScoreInterface", "NBACard"];
+// Einzelne Felder MIT Argumenten
+function withArgs(lines: string[], names: string[]): string[] {
+  const out: string[] = [];
+  for (let i = 0; i < lines.length; i++) {
+    const m = lines[i].match(/^([A-Za-z0-9_]+)\b/);
+    if (!m || !names.includes(m[1])) continue;
+    out.push(lines[i]);
+    if (lines[i].includes("(") && !lines[i].includes(")")) {
+      let j = i + 1;
+      while (j < lines.length && !lines[j].startsWith(")")) out.push("  " + lines[j++]);
+      if (j < lines.length) out.push(lines[j]);
+      i = j;
+    }
+  }
+  return out;
+}
+
+const FULL = ["So5Root", "FixturePlayer", "Sport", "PlayerPlayingStatus", "Injury", "PlayingStatusOdds", "TeamInterface", "SearchPlayers", "SearchPlayerHit", "AnyGameInterface"];
 
 export default async function Diagnose({ searchParams }: { searchParams: { t?: string } }) {
   const sections: [string, string][] = [];
   let error = "";
   try {
     const schema = await loadSchema();
+    const q = block(schema, "Query") ?? [];
+    sections.push(["Query: players, teams, team, searchPlayers, so5 (mit Argumenten)", withArgs(q, ["players", "teams", "team", "searchPlayers", "so5", "anyPlayer"]).join("\n")]);
     const extra = (searchParams.t ?? "").split(",").map((n) => n.trim()).filter((n) => /^[A-Za-z0-9_]+$/.test(n));
-    for (const n of [...WANTED, ...extra]) {
+    for (const n of [...FULL, ...extra]) {
       const b = block(schema, n);
-      sections.push([n, b ? compact(b).join("\n").slice(0, 7000) : "Typ nicht vorhanden"]);
+      sections.push([n, b ? (n === "So5Root" ? b.join("\n") : compact(b).join("\n")).slice(0, 6000) : "Typ nicht vorhanden"]);
     }
-    const names = Array.from(schema.matchAll(/^(?:type|interface|enum|union) ([A-Za-z0-9_]+)/gm))
-      .map((m) => m[1])
-      .filter((n) => /so5|fixture|nba|score|lineup/i.test(n));
-    sections.push(["Typnamen (So5/Fixture/NBA/Score)", names.slice(0, 300).join(", ")]);
   } catch (e) {
     error = (e as Error).message;
   }
