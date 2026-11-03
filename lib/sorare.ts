@@ -35,10 +35,10 @@ export async function getNbaTeams(): Promise<Club[]> {
 // fällt der Abruf automatisch auf die nächstkleinere Stufe zurück.
 const GAME = "activeInjuries { __typename } nextGame { date homeTeam { name } awayTeam { name } }";
 const FOOT_CORE = "slug displayName position playingStatus";
-const FOOT_STATS = "averageScore lastFiveSo5Appearances nextClassicFixtureProjectedScore";
+const FOOT_STATS = "rawPlayerGameScores(last: 10) lastFiveSo5Appearances nextClassicFixtureProjectedScore";
 const FOOT_ODDS = "nextClassicFixturePlayingStatusOdds { starterOddsBasisPoints substituteOddsBasisPoints nonPlayingOddsBasisPoints }";
 const NBA_CORE = "slug displayName anyPositions";
-const NBA_STATS = "averageScore lastFiveSo5Appearances nextClassicFixtureProjectedScore nextDailyFixtureProjectedScore";
+const NBA_STATS = "rawPlayerGameScores(last: 10) lastFiveSo5Appearances nextClassicFixtureProjectedScore nextDailyFixtureProjectedScore";
 const TIERS: Record<Sport, string[]> = {
   football: [`${FOOT_CORE} ${FOOT_STATS} ${GAME} ${FOOT_ODDS}`, `${FOOT_CORE} ${FOOT_STATS}`, FOOT_CORE],
   nba: [`${NBA_CORE} ${NBA_STATS} ${GAME}`, `${NBA_CORE} ${NBA_STATS}`, NBA_CORE],
@@ -61,6 +61,10 @@ function mapPosition(sport: Sport, n: any): string {
 function toPlayer(n: any, club: Club, sport: Sport): Player {
   const g = n.nextGame;
   const o = n.nextClassicFixturePlayingStatusOdds;
+  const raw: number[] = Array.isArray(n.rawPlayerGameScores)
+    ? n.rawPlayerGameScores.filter((x: unknown): x is number => typeof x === "number" && isFinite(x))
+    : [];
+  const avg = raw.length ? raw.reduce((a, b) => a + b, 0) / raw.length : null;
   const playOdds = o
     ? Math.max(0, Math.min(1, (Number(o.starterOddsBasisPoints) + 0.6 * Number(o.substituteOddsBasisPoints)) / 10000))
     : null;
@@ -70,7 +74,7 @@ function toPlayer(n: any, club: Club, sport: Sport): Player {
     team: club.name,
     teamSlug: club.slug,
     position: mapPosition(sport, n),
-    avg: num(n.averageScore),
+    avg,
     proj: num(n.nextDailyFixtureProjectedScore) ?? num(n.nextClassicFixtureProjectedScore),
     last5Apps: num(n.lastFiveSo5Appearances),
     status: String(n.playingStatus ?? ""),
